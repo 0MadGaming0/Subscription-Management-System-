@@ -1,0 +1,286 @@
+{
+  "info": {
+    "_postman_id": "brightloop-subscription-part2-products-plans",
+    "name": "Brightloop Software - Part 2: Product & Plan Management",
+    "description": "Comprehensive Postman test collection for Part 2 of Brightloop Subscription Management System API.",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "variable": [
+    {
+      "key": "baseUrl",
+      "value": "http://localhost:5000",
+      "type": "string"
+    },
+    {
+      "key": "adminToken",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "staffToken",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "customerToken",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "productId",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "planId",
+      "value": "",
+      "type": "string"
+    }
+  ],
+  "item": [
+    {
+      "name": "1. Product Management",
+      "item": [
+        {
+          "name": "1.1 Create Product with Variants (Admin)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "var jsonData = pm.response.json();",
+                  "if (jsonData.product && jsonData.product._id) {",
+                  "    pm.collectionVariables.set('productId', jsonData.product._id);",
+                  "}"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "Authorization", "value": "Bearer {{adminToken}}" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"Business Management Software\",\n  \"type\": \"software\",\n  \"salesPrice\": 2500,\n  \"costPrice\": 1200,\n  \"notes\": \"Premium enterprise business suite\",\n  \"variants\": [\n    {\n      \"name\": \"Standard\",\n      \"additionalPrice\": 0\n    },\n    {\n      \"name\": \"Odoo\",\n      \"additionalPrice\": 560\n    }\n  ],\n  \"isActive\": true\n}"
+            },
+            "url": { "raw": "{{baseUrl}}/api/products", "host": ["{{baseUrl}}"], "path": ["api", "products"] }
+          }
+        },
+        {
+          "name": "1.2 Reject Duplicate Variant Names",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "Authorization", "value": "Bearer {{adminToken}}" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"Duplicate Variant Tool\",\n  \"type\": \"software\",\n  \"salesPrice\": 1000,\n  \"costPrice\": 500,\n  \"variants\": [\n    { \"name\": \"Standard\", \"additionalPrice\": 0 },\n    { \"name\": \"standard\", \"additionalPrice\": 200 }\n  ]\n}"
+            },
+            "url": { "raw": "{{baseUrl}}/api/products", "host": ["{{baseUrl}}"], "path": ["api", "products"] }
+          }
+        },
+        {
+          "name": "1.3 Reject Negative Price",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "Authorization", "value": "Bearer {{adminToken}}" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"Negative Price Product\",\n  \"type\": \"service\",\n  \"salesPrice\": -50,\n  \"costPrice\": 100\n}"
+            },
+            "url": { "raw": "{{baseUrl}}/api/products", "host": ["{{baseUrl}}"], "path": ["api", "products"] }
+          }
+        },
+        {
+          "name": "1.4 Get All Products (Admin / Staff)",
+          "request": {
+            "method": "GET",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{staffToken}}" }
+            ],
+            "url": { "raw": "{{baseUrl}}/api/products", "host": ["{{baseUrl}}"], "path": ["api", "products"] }
+          }
+        },
+        {
+          "name": "1.5 Get Product By ID",
+          "request": {
+            "method": "GET",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{adminToken}}" }
+            ],
+            "url": { "raw": "{{baseUrl}}/api/products/{{productId}}", "host": ["{{baseUrl}}"], "path": ["api", "products", "{{productId}}"] }
+          }
+        },
+        {
+          "name": "1.6 Update Product (Admin)",
+          "request": {
+            "method": "PUT",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "Authorization", "value": "Bearer {{adminToken}}" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"salesPrice\": 2700,\n  \"notes\": \"Updated enterprise software notes\"\n}"
+            },
+            "url": { "raw": "{{baseUrl}}/api/products/{{productId}}", "host": ["{{baseUrl}}"], "path": ["api", "products", "{{productId}}"] }
+          }
+        },
+        {
+          "name": "1.7 Deny Staff Product Creation (403)",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "Authorization", "value": "Bearer {{staffToken}}" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"Illegal Staff Product\",\n  \"type\": \"hardware\",\n  \"salesPrice\": 100,\n  \"costPrice\": 50\n}"
+            },
+            "url": { "raw": "{{baseUrl}}/api/products", "host": ["{{baseUrl}}"], "path": ["api", "products"] }
+          }
+        }
+      ]
+    },
+    {
+      "name": "2. Plan Management",
+      "item": [
+        {
+          "name": "2.1 Create Monthly Plan (Admin)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "var jsonData = pm.response.json();",
+                  "if (jsonData.plan && jsonData.plan._id) {",
+                  "    pm.collectionVariables.set('planId', jsonData.plan._id);",
+                  "}"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "Authorization", "value": "Bearer {{adminToken}}" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"Business Monthly\",\n  \"product\": \"{{productId}}\",\n  \"price\": 2500,\n  \"billingFrequency\": \"monthly\",\n  \"minimumQuantity\": 1,\n  \"startDate\": \"2026-10-31\",\n  \"endDate\": \"2027-10-31\",\n  \"autoClose\": true,\n  \"allowEarlyClose\": true,\n  \"allowPause\": true,\n  \"allowRenewal\": true,\n  \"isActive\": true\n}"
+            },
+            "url": { "raw": "{{baseUrl}}/api/plans", "host": ["{{baseUrl}}"], "path": ["api", "plans"] }
+          }
+        },
+        {
+          "name": "2.2 Create Daily Plan (Admin)",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "Authorization", "value": "Bearer {{adminToken}}" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"Daily Pass Plan\",\n  \"product\": \"{{productId}}\",\n  \"price\": 120,\n  \"billingFrequency\": \"daily\",\n  \"minimumQuantity\": 1,\n  \"startDate\": \"2026-10-31\"\n}"
+            },
+            "url": { "raw": "{{baseUrl}}/api/plans", "host": ["{{baseUrl}}"], "path": ["api", "plans"] }
+          }
+        },
+        {
+          "name": "2.3 Create Yearly Plan (Admin)",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "Authorization", "value": "Bearer {{adminToken}}" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"Annual Enterprise Plan\",\n  \"product\": \"{{productId}}\",\n  \"price\": 25000,\n  \"billingFrequency\": \"yearly\",\n  \"minimumQuantity\": 1,\n  \"startDate\": \"2026-10-31\",\n  \"endDate\": \"2028-10-31\"\n}"
+            },
+            "url": { "raw": "{{baseUrl}}/api/plans", "host": ["{{baseUrl}}"], "path": ["api", "plans"] }
+          }
+        },
+        {
+          "name": "2.4 Reject Invalid Billing Frequency",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "Authorization", "value": "Bearer {{adminToken}}" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"Bi-weekly Invalid Plan\",\n  \"product\": \"{{productId}}\",\n  \"price\": 1000,\n  \"billingFrequency\": \"biweekly\",\n  \"startDate\": \"2026-10-31\"\n}"
+            },
+            "url": { "raw": "{{baseUrl}}/api/plans", "host": ["{{baseUrl}}"], "path": ["api", "plans"] }
+          }
+        },
+        {
+          "name": "2.5 Reject Invalid Product Reference",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "Authorization", "value": "Bearer {{adminToken}}" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"Ghost Product Plan\",\n  \"product\": \"6723c0000000000000000000\",\n  \"price\": 1000,\n  \"billingFrequency\": \"monthly\",\n  \"startDate\": \"2026-10-31\"\n}"
+            },
+            "url": { "raw": "{{baseUrl}}/api/plans", "host": ["{{baseUrl}}"], "path": ["api", "plans"] }
+          }
+        },
+        {
+          "name": "2.6 Reject Invalid Date Range (End before Start)",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "Authorization", "value": "Bearer {{adminToken}}" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"Invalid Dates Plan\",\n  \"product\": \"{{productId}}\",\n  \"price\": 1000,\n  \"billingFrequency\": \"monthly\",\n  \"startDate\": \"2026-10-31\",\n  \"endDate\": \"2025-10-31\"\n}"
+            },
+            "url": { "raw": "{{baseUrl}}/api/plans", "host": ["{{baseUrl}}"], "path": ["api", "plans"] }
+          }
+        },
+        {
+          "name": "2.7 Get Plans (Populated Product Details)",
+          "request": {
+            "method": "GET",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{staffToken}}" }
+            ],
+            "url": { "raw": "{{baseUrl}}/api/plans?billingFrequency=monthly", "host": ["{{baseUrl}}"], "path": ["api", "plans"], "query": [{ "key": "billingFrequency", "value": "monthly" }] }
+          }
+        },
+        {
+          "name": "2.8 Safe Deletion Check (Product with Plans Cannot Be Deleted)",
+          "request": {
+            "method": "DELETE",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{adminToken}}" }
+            ],
+            "url": { "raw": "{{baseUrl}}/api/products/{{productId}}", "host": ["{{baseUrl}}"], "path": ["api", "products", "{{productId}}"] }
+          }
+        }
+      ]
+    }
+  ]
+}
+

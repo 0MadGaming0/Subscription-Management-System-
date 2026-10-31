@@ -1,0 +1,231 @@
+{
+  "info": {
+    "_postman_id": "brightloop-subscription-part3-quotations-subs",
+    "name": "Brightloop Software - Part 3: Quotation & Subscription Management",
+    "description": "Comprehensive Postman test collection for Part 3 of Brightloop Subscription Management System API.",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "variable": [
+    { "key": "baseUrl", "value": "http://localhost:5000", "type": "string" },
+    { "key": "adminToken", "value": "", "type": "string" },
+    { "key": "staffToken", "value": "", "type": "string" },
+    { "key": "customerToken", "value": "", "type": "string" },
+    { "key": "customerId", "value": "", "type": "string" },
+    { "key": "productId", "value": "", "type": "string" },
+    { "key": "planId", "value": "", "type": "string" },
+    { "key": "templateId", "value": "", "type": "string" },
+    { "key": "subscriptionId", "value": "", "type": "string" }
+  ],
+  "item": [
+    {
+      "name": "1. Quotation Templates",
+      "item": [
+        {
+          "name": "1.1 Create Quotation Template (Admin)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "var jsonData = pm.response.json();",
+                  "if (jsonData.template && jsonData.template._id) {",
+                  "    pm.collectionVariables.set('templateId', jsonData.template._id);",
+                  "}"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "Authorization", "value": "Bearer {{adminToken}}" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"Enterprise Software Standard Proposal\",\n  \"description\": \"Pre-configured proposal for business software yearly contract\",\n  \"validityDays\": 15,\n  \"plan\": \"{{planId}}\",\n  \"productLineItems\": [\n    {\n      \"product\": \"{{productId}}\",\n      \"variant\": { \"name\": \"Odoo\", \"additionalPrice\": 560 },\n      \"description\": \"Business Management Software (Odoo Tier)\",\n      \"defaultQuantity\": 1,\n      \"unitPrice\": 3060,\n      \"taxPercentage\": 10\n    }\n  ],\n  \"paymentTerms\": \"Net 30\",\n  \"isActive\": true\n}"
+            },
+            "url": { "raw": "{{baseUrl}}/api/quotation-templates", "host": ["{{baseUrl}}"], "path": ["api", "quotation-templates"] }
+          }
+        },
+        {
+          "name": "1.2 List Quotation Templates (Staff / Admin)",
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "Authorization", "value": "Bearer {{staffToken}}" }],
+            "url": { "raw": "{{baseUrl}}/api/quotation-templates", "host": ["{{baseUrl}}"], "path": ["api", "quotation-templates"] }
+          }
+        },
+        {
+          "name": "1.3 Get Template By ID",
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "Authorization", "value": "Bearer {{staffToken}}" }],
+            "url": { "raw": "{{baseUrl}}/api/quotation-templates/{{templateId}}", "host": ["{{baseUrl}}"], "path": ["api", "quotation-templates", "{{templateId}}"] }
+          }
+        }
+      ]
+    },
+    {
+      "name": "2. Subscription Creation & Quotations",
+      "item": [
+        {
+          "name": "2.1 Generate Quotation From Template (Staff / Admin)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "var jsonData = pm.response.json();",
+                  "if (jsonData.subscription && jsonData.subscription._id) {",
+                  "    pm.collectionVariables.set('subscriptionId', jsonData.subscription._id);",
+                  "}"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "Authorization", "value": "Bearer {{staffToken}}" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"templateId\": \"{{templateId}}\",\n  \"customerId\": \"{{customerId}}\",\n  \"startDate\": \"2026-10-31\",\n  \"paymentTerms\": \"Net 30\"\n}"
+            },
+            "url": { "raw": "{{baseUrl}}/api/subscriptions/from-template", "host": ["{{baseUrl}}"], "path": ["api", "subscriptions", "from-template"] }
+          }
+        },
+        {
+          "name": "2.2 Create Subscription From Scratch (Draft)",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "Authorization", "value": "Bearer {{adminToken}}" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"customer\": \"{{customerId}}\",\n  \"plan\": \"{{planId}}\",\n  \"startDate\": \"2026-10-31\",\n  \"paymentTerms\": \"Net 15\",\n  \"lineItems\": [\n    {\n      \"product\": \"{{productId}}\",\n      \"quantity\": 2,\n      \"unitPrice\": 2500,\n      \"taxPercentage\": 10\n    }\n  ],\n  \"discountAmount\": 200,\n  \"status\": \"Draft\"\n}"
+            },
+            "url": { "raw": "{{baseUrl}}/api/subscriptions", "host": ["{{baseUrl}}"], "path": ["api", "subscriptions"] }
+          }
+        }
+      ]
+    },
+    {
+      "name": "3. Subscription Lifecycle Transitions",
+      "item": [
+        {
+          "name": "3.1 Confirm Quotation (Quotation -> Confirmed)",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Authorization", "value": "Bearer {{staffToken}}" }],
+            "url": { "raw": "{{baseUrl}}/api/subscriptions/{{subscriptionId}}/confirm", "host": ["{{baseUrl}}"], "path": ["api", "subscriptions", "{{subscriptionId}}", "confirm"] }
+          }
+        },
+        {
+          "name": "3.2 Activate Subscription (Confirmed -> Active)",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Authorization", "value": "Bearer {{staffToken}}" }],
+            "url": { "raw": "{{baseUrl}}/api/subscriptions/{{subscriptionId}}/activate", "host": ["{{baseUrl}}"], "path": ["api", "subscriptions", "{{subscriptionId}}", "activate"] }
+          }
+        },
+        {
+          "name": "3.3 Pause Subscription (Active -> Paused)",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Authorization", "value": "Bearer {{staffToken}}" }],
+            "url": { "raw": "{{baseUrl}}/api/subscriptions/{{subscriptionId}}/pause", "host": ["{{baseUrl}}"], "path": ["api", "subscriptions", "{{subscriptionId}}", "pause"] }
+          }
+        },
+        {
+          "name": "3.4 Resume Subscription (Paused -> Active)",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Authorization", "value": "Bearer {{staffToken}}" }],
+            "url": { "raw": "{{baseUrl}}/api/subscriptions/{{subscriptionId}}/resume", "host": ["{{baseUrl}}"], "path": ["api", "subscriptions", "{{subscriptionId}}", "resume"] }
+          }
+        },
+        {
+          "name": "3.5 Close Subscription (Active -> Closed)",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "Authorization", "value": "Bearer {{adminToken}}" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"note\": \"Customer requested contract closure\"\n}"
+            },
+            "url": { "raw": "{{baseUrl}}/api/subscriptions/{{subscriptionId}}/close", "host": ["{{baseUrl}}"], "path": ["api", "subscriptions", "{{subscriptionId}}", "close"] }
+          }
+        },
+        {
+          "name": "3.6 Renew Subscription (Closed -> Active)",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "Authorization", "value": "Bearer {{adminToken}}" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"note\": \"Annual renewal approved\"\n}"
+            },
+            "url": { "raw": "{{baseUrl}}/api/subscriptions/{{subscriptionId}}/renew", "host": ["{{baseUrl}}"], "path": ["api", "subscriptions", "{{subscriptionId}}", "renew"] }
+          }
+        },
+        {
+          "name": "3.7 Reject Invalid Status Transition (400 Bad Request)",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "Authorization", "value": "Bearer {{adminToken}}" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"status\": \"Draft\"\n}"
+            },
+            "url": { "raw": "{{baseUrl}}/api/subscriptions/{{subscriptionId}}/status", "host": ["{{baseUrl}}"], "path": ["api", "subscriptions", "{{subscriptionId}}", "status"] }
+          }
+        }
+      ]
+    },
+    {
+      "name": "4. Customer Ownership & Security",
+      "item": [
+        {
+          "name": "4.1 Customer Views Own Subscriptions (Filtered)",
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "Authorization", "value": "Bearer {{customerToken}}" }],
+            "url": { "raw": "{{baseUrl}}/api/subscriptions", "host": ["{{baseUrl}}"], "path": ["api", "subscriptions"] }
+          }
+        },
+        {
+          "name": "4.2 Customer Access Denied to Template Creation (403)",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "Authorization", "value": "Bearer {{customerToken}}" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"Hacked Template\"\n}"
+            },
+            "url": { "raw": "{{baseUrl}}/api/quotation-templates", "host": ["{{baseUrl}}"], "path": ["api", "quotation-templates"] }
+          }
+        }
+      ]
+    }
+  ]
+}
+

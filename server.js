@@ -19,6 +19,10 @@ if (!envStatus.isValid) {
 
 const connectDB = require('./config/db');
 const authRoutes = require('./routes/authRoutes');
+const productRoutes = require('./routes/productRoutes');
+const planRoutes = require('./routes/planRoutes');
+const quotationTemplateRoutes = require('./routes/quotationTemplateRoutes');
+const subscriptionRoutes = require('./routes/subscriptionRoutes');
 const { notFound, errorHandler } = require('./middleware/errorMiddleware');
 
 const app = express();
@@ -74,14 +78,22 @@ app.get('/api/health', (req, res) => {
   res.status(200).json({
     status: 'ok',
     service: 'Brightloop Subscription Management API',
-    module: 'Part 1: Authentication & User Management',
+    modules: [
+      'Part 1: Authentication & User Management',
+      'Part 2: Product & Plan Management',
+      'Part 3: Quotation & Subscription Management',
+    ],
     timestamp: new Date().toISOString(),
     uptime: process.uptime(),
   });
 });
 
-// Authentication & User Management routes
+// API Routes
 app.use('/api/auth', authRoutes);
+app.use('/api/products', productRoutes);
+app.use('/api/plans', planRoutes);
+app.use('/api/quotation-templates', quotationTemplateRoutes);
+app.use('/api/subscriptions', subscriptionRoutes);
 
 // ==========================================
 // 4. ERROR HANDLING MIDDLEWARE
