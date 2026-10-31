@@ -1,0 +1,260 @@
+{
+  "info": {
+    "_postman_id": "brightloop-part4-invoicing-payments",
+    "name": "Brightloop Software - Part 4: Invoicing, Billing, Discounts & Payments",
+    "description": "Comprehensive Postman test collection for Part 4 of Brightloop Subscription Management System.",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "variable": [
+    { "key": "baseUrl", "value": "http://localhost:5000", "type": "string" },
+    { "key": "adminToken", "value": "", "type": "string" },
+    { "key": "staffToken", "value": "", "type": "string" },
+    { "key": "customerToken", "value": "", "type": "string" },
+    { "key": "customerId", "value": "", "type": "string" },
+    { "key": "subscriptionId", "value": "", "type": "string" },
+    { "key": "invoiceId", "value": "", "type": "string" },
+    { "key": "discountId", "value": "", "type": "string" },
+    { "key": "paymentId", "value": "", "type": "string" }
+  ],
+  "item": [
+    {
+      "name": "1. Discount Management",
+      "item": [
+        {
+          "name": "1.1 Create Percentage Discount (Admin)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "var jsonData = pm.response.json();",
+                  "if (jsonData.discount && jsonData.discount._id) {",
+                  "    pm.collectionVariables.set('discountId', jsonData.discount._id);",
+                  "}"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "Authorization", "value": "Bearer {{adminToken}}" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"code\": \"WELCOME10\",\n  \"name\": \"10% New Customer Welcome Discount\",\n  \"description\": \"10% discount on initial contract or invoice\",\n  \"type\": \"percentage\",\n  \"value\": 10,\n  \"appliesTo\": \"subscription\",\n  \"minPurchaseAmount\": 500,\n  \"maxUsageCount\": 50,\n  \"isActive\": true\n}"
+            },
+            "url": { "raw": "{{baseUrl}}/api/discounts", "host": ["{{baseUrl}}"], "path": ["api", "discounts"] }
+          }
+        },
+        {
+          "name": "1.2 Create Fixed Amount Discount (Admin)",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "Authorization", "value": "Bearer {{adminToken}}" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"code\": \"SAVE200\",\n  \"name\": \"$200 Off Enterprise Deal\",\n  \"type\": \"fixed\",\n  \"value\": 200,\n  \"minPurchaseAmount\": 1000,\n  \"isActive\": true\n}"
+            },
+            "url": { "raw": "{{baseUrl}}/api/discounts", "host": ["{{baseUrl}}"], "path": ["api", "discounts"] }
+          }
+        },
+        {
+          "name": "1.3 Validate Discount Code (Staff / Admin)",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "Authorization", "value": "Bearer {{staffToken}}" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"code\": \"WELCOME10\",\n  \"subtotal\": 2500,\n  \"totalQuantity\": 1\n}"
+            },
+            "url": { "raw": "{{baseUrl}}/api/discounts/validate", "host": ["{{baseUrl}}"], "path": ["api", "discounts", "validate"] }
+          }
+        },
+        {
+          "name": "1.4 Deny Staff Discount Creation (403)",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "Authorization", "value": "Bearer {{staffToken}}" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"code\": \"ILLEGAL\",\n  \"name\": \"Staff Created Discount\",\n  \"type\": \"fixed\",\n  \"value\": 50\n}"
+            },
+            "url": { "raw": "{{baseUrl}}/api/discounts", "host": ["{{baseUrl}}"], "path": ["api", "discounts"] }
+          }
+        }
+      ]
+    },
+    {
+      "name": "2. Invoicing & Billing",
+      "item": [
+        {
+          "name": "2.1 Generate Invoice From Subscription (Staff / Admin)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "var jsonData = pm.response.json();",
+                  "if (jsonData.invoice && jsonData.invoice._id) {",
+                  "    pm.collectionVariables.set('invoiceId', jsonData.invoice._id);",
+                  "}"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "Authorization", "value": "Bearer {{staffToken}}" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"discountCode\": \"WELCOME10\",\n  \"autoConfirm\": true,\n  \"notes\": \"Initial billing cycle with WELCOME10 coupon applied\"\n}"
+            },
+            "url": { "raw": "{{baseUrl}}/api/invoices/from-subscription/{{subscriptionId}}", "host": ["{{baseUrl}}"], "path": ["api", "invoices", "from-subscription", "{{subscriptionId}}"] }
+          }
+        },
+        {
+          "name": "2.2 Duplicate Invoice Prevention (Idempotency Check)",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "Authorization", "value": "Bearer {{staffToken}}" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"autoConfirm\": true\n}"
+            },
+            "url": { "raw": "{{baseUrl}}/api/invoices/from-subscription/{{subscriptionId}}", "host": ["{{baseUrl}}"], "path": ["api", "invoices", "from-subscription", "{{subscriptionId}}"] },
+            "description": "Calling again for the same period returns existing invoice without creating duplicate."
+          }
+        },
+        {
+          "name": "2.3 Run Recurring Billing Batch (Staff / Admin)",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "Authorization", "value": "Bearer {{adminToken}}" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"autoConfirm\": true\n}"
+            },
+            "url": { "raw": "{{baseUrl}}/api/invoices/run-recurring-billing", "host": ["{{baseUrl}}"], "path": ["api", "invoices", "run-recurring-billing"] }
+          }
+        },
+        {
+          "name": "2.4 View Invoice Details By ID",
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "Authorization", "value": "Bearer {{staffToken}}" }],
+            "url": { "raw": "{{baseUrl}}/api/invoices/{{invoiceId}}", "host": ["{{baseUrl}}"], "path": ["api", "invoices", "{{invoiceId}}"] }
+          }
+        }
+      ]
+    },
+    {
+      "name": "3. Payment Recording & Overpayment Defense",
+      "item": [
+        {
+          "name": "3.1 Partial Payment ($500 Recorded)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "var jsonData = pm.response.json();",
+                  "if (jsonData.payment && jsonData.payment._id) {",
+                  "    pm.collectionVariables.set('paymentId', jsonData.payment._id);",
+                  "}"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "Authorization", "value": "Bearer {{staffToken}}" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"invoiceId\": \"{{invoiceId}}\",\n  \"amount\": 500,\n  \"paymentMethod\": \"bank_transfer\",\n  \"note\": \"First installment wire transfer\",\n  \"transactionReference\": \"TXN-WIRE-9901\"\n}"
+            },
+            "url": { "raw": "{{baseUrl}}/api/payments", "host": ["{{baseUrl}}"], "path": ["api", "payments"] }
+          }
+        },
+        {
+          "name": "3.2 Overpayment Rejection (Attempting to Pay More Than Balance Due)",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "Authorization", "value": "Bearer {{staffToken}}" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"invoiceId\": \"{{invoiceId}}\",\n  \"amount\": 999999,\n  \"paymentMethod\": \"credit_card\"\n}"
+            },
+            "url": { "raw": "{{baseUrl}}/api/payments", "host": ["{{baseUrl}}"], "path": ["api", "payments"] },
+            "description": "Server rejects payment amounts greater than invoice amountDue."
+          }
+        },
+        {
+          "name": "3.3 Final Settlement Payment (Marks Invoice Paid)",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "Authorization", "value": "Bearer {{staffToken}}" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"invoiceId\": \"{{invoiceId}}\",\n  \"amount\": 2504,\n  \"paymentMethod\": \"credit_card\",\n  \"note\": \"Final settlement of remaining balance\"\n}"
+            },
+            "url": { "raw": "{{baseUrl}}/api/payments", "host": ["{{baseUrl}}"], "path": ["api", "payments"] }
+          }
+        }
+      ]
+    },
+    {
+      "name": "4. Customer Isolation & Security",
+      "item": [
+        {
+          "name": "4.1 Customer Lists Invoices (Filtered to Own Invoices)",
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "Authorization", "value": "Bearer {{customerToken}}" }],
+            "url": { "raw": "{{baseUrl}}/api/invoices", "host": ["{{baseUrl}}"], "path": ["api", "invoices"] }
+          }
+        },
+        {
+          "name": "4.2 Customer Lists Payments (Filtered to Own Payments)",
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "Authorization", "value": "Bearer {{customerToken}}" }],
+            "url": { "raw": "{{baseUrl}}/api/payments", "host": ["{{baseUrl}}"], "path": ["api", "payments"] }
+          }
+        }
+      ]
+    }
+  ]
+}
+

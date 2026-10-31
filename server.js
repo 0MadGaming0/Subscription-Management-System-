@@ -23,6 +23,9 @@ const productRoutes = require('./routes/productRoutes');
 const planRoutes = require('./routes/planRoutes');
 const quotationTemplateRoutes = require('./routes/quotationTemplateRoutes');
 const subscriptionRoutes = require('./routes/subscriptionRoutes');
+const discountRoutes = require('./routes/discountRoutes');
+const invoiceRoutes = require('./routes/invoiceRoutes');
+const paymentRoutes = require('./routes/paymentRoutes');
 const { notFound, errorHandler } = require('./middleware/errorMiddleware');
 
 const app = express();
@@ -82,6 +85,7 @@ app.get('/api/health', (req, res) => {
       'Part 1: Authentication & User Management',
       'Part 2: Product & Plan Management',
       'Part 3: Quotation & Subscription Management',
+      'Part 4: Invoicing, Recurring Billing, Discounts & Payments',
     ],
     timestamp: new Date().toISOString(),
     uptime: process.uptime(),
@@ -94,6 +98,9 @@ app.use('/api/products', productRoutes);
 app.use('/api/plans', planRoutes);
 app.use('/api/quotation-templates', quotationTemplateRoutes);
 app.use('/api/subscriptions', subscriptionRoutes);
+app.use('/api/discounts', discountRoutes);
+app.use('/api/invoices', invoiceRoutes);
+app.use('/api/payments', paymentRoutes);
 
 // ==========================================
 // 4. ERROR HANDLING MIDDLEWARE
