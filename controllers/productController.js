@@ -125,8 +125,10 @@ const getProducts = async (req, res, next) => {
       filter.type = String(type).trim().toLowerCase();
     }
 
-    // Filter by active status
-    if (isActive !== undefined) {
+    // H1: Customers can ONLY view active products
+    if (req.user && req.user.role === 'customer') {
+      filter.isActive = true;
+    } else if (isActive !== undefined) {
       filter.isActive = String(isActive).toLowerCase() === 'true';
     }
 
@@ -135,11 +137,26 @@ const getProducts = async (req, res, next) => {
       filter.name = { $regex: String(search).trim(), $options: 'i' };
     }
 
-    const products = await Product.find(filter).sort({ createdAt: -1 });
+    // M4: Pagination support
+    const page = Math.max(1, parseInt(req.query.page, 10) || 1);
+    const limit = Math.min(100, Math.max(1, parseInt(req.query.limit, 10) || 20));
+    const skip = (page - 1) * limit;
+
+    const total = await Product.countDocuments(filter);
+    const totalPages = Math.ceil(total / limit) || 1;
+
+    const products = await Product.find(filter)
+      .sort({ createdAt: -1 })
+      .skip(skip)
+      .limit(limit);
 
     return res.status(200).json({
       success: true,
       count: products.length,
+      total,
+      page,
+      totalPages,
+      limit,
       products,
     });
   } catch (error) {
@@ -166,6 +183,14 @@ const getProductById = async (req, res, next) => {
     const product = await Product.findById(id);
 
     if (!product) {
+      return res.status(404).json({
+        success: false,
+        message: 'Product not found.',
+      });
+    }
+
+    // H1: Customers cannot access inactive products
+    if (req.user && req.user.role === 'customer' && !product.isActive) {
       return res.status(404).json({
         success: false,
         message: 'Product not found.',

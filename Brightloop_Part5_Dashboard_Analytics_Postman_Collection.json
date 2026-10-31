@@ -1,0 +1,135 @@
+{
+  "info": {
+    "_postman_id": "brightloop-part5-dashboard-analytics",
+    "name": "Brightloop Software - Part 5: Dashboard, Analytics & Reporting",
+    "description": "Comprehensive Postman test collection for Part 5 of Brightloop Subscription Management System.",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "variable": [
+    { "key": "baseUrl", "value": "http://localhost:5000", "type": "string" },
+    { "key": "adminToken", "value": "", "type": "string" },
+    { "key": "staffToken", "value": "", "type": "string" },
+    { "key": "customerToken", "value": "", "type": "string" }
+  ],
+  "item": [
+    {
+      "name": "1. Executive Summary",
+      "item": [
+        {
+          "name": "1.1 Get Dashboard Summary (Admin / Staff)",
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "Authorization", "value": "Bearer {{adminToken}}" }],
+            "url": { "raw": "{{baseUrl}}/api/dashboard/summary", "host": ["{{baseUrl}}"], "path": ["api", "dashboard", "summary"] },
+            "description": "Returns counts of customers, subscriptions by status, invoices, overdue amounts, and actual collected revenue."
+          }
+        },
+        {
+          "name": "1.2 Deny Customer Access to Summary (403)",
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "Authorization", "value": "Bearer {{customerToken}}" }],
+            "url": { "raw": "{{baseUrl}}/api/dashboard/summary", "host": ["{{baseUrl}}"], "path": ["api", "dashboard", "summary"] },
+            "description": "Ensures customers are forbidden from viewing company-wide analytics."
+          }
+        }
+      ]
+    },
+    {
+      "name": "2. Revenue Analytics",
+      "item": [
+        {
+          "name": "2.1 Monthly Revenue Analytics with Period Comparison",
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "Authorization", "value": "Bearer {{staffToken}}" }],
+            "url": {
+              "raw": "{{baseUrl}}/api/dashboard/revenue?interval=monthly",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "dashboard", "revenue"],
+              "query": [{ "key": "interval", "value": "monthly" }]
+            }
+          }
+        },
+        {
+          "name": "2.2 Daily Revenue with Date Range Filter",
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "Authorization", "value": "Bearer {{adminToken}}" }],
+            "url": {
+              "raw": "{{baseUrl}}/api/dashboard/revenue?interval=daily&startDate=2026-10-01&endDate=2026-10-31",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "dashboard", "revenue"],
+              "query": [
+                { "key": "interval", "value": "daily" },
+                { "key": "startDate", "value": "2026-10-01" },
+                { "key": "endDate", "value": "2026-10-31" }
+              ]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "3. Subscriptions Analytics",
+      "item": [
+        {
+          "name": "3.1 Subscription Status Breakdown & Frequency Metrics",
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "Authorization", "value": "Bearer {{staffToken}}" }],
+            "url": { "raw": "{{baseUrl}}/api/dashboard/subscriptions", "host": ["{{baseUrl}}"], "path": ["api", "dashboard", "subscriptions"] }
+          }
+        }
+      ]
+    },
+    {
+      "name": "4. Invoices Analytics",
+      "item": [
+        {
+          "name": "4.1 Invoice Status Distribution, Overdue & Approaching Due",
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "Authorization", "value": "Bearer {{staffToken}}" }],
+            "url": { "raw": "{{baseUrl}}/api/dashboard/invoices", "host": ["{{baseUrl}}"], "path": ["api", "dashboard", "invoices"] }
+          }
+        }
+      ]
+    },
+    {
+      "name": "5. Payments Analytics",
+      "item": [
+        {
+          "name": "5.1 Payment Method Breakdown & Trends",
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "Authorization", "value": "Bearer {{staffToken}}" }],
+            "url": { "raw": "{{baseUrl}}/api/dashboard/payments", "host": ["{{baseUrl}}"], "path": ["api", "dashboard", "payments"] }
+          }
+        }
+      ]
+    },
+    {
+      "name": "6. Export Reports (CSV)",
+      "item": [
+        {
+          "name": "6.1 Export Revenue CSV",
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "Authorization", "value": "Bearer {{adminToken}}" }],
+            "url": { "raw": "{{baseUrl}}/api/dashboard/export/revenue", "host": ["{{baseUrl}}"], "path": ["api", "dashboard", "export", "revenue"] }
+          }
+        },
+        {
+          "name": "6.2 Export Invoices CSV",
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "Authorization", "value": "Bearer {{adminToken}}" }],
+            "url": { "raw": "{{baseUrl}}/api/dashboard/export/invoices", "host": ["{{baseUrl}}"], "path": ["api", "dashboard", "export", "invoices"] }
+          }
+        }
+      ]
+    }
+  ]
+}
+

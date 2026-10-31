@@ -16,12 +16,12 @@ router.use(protect);
 
 router
   .route('/')
-  .get(authorize('admin', 'staff'), getPlans)
+  .get(authorize('admin', 'staff', 'customer'), getPlans)
   .post(authorize('admin'), createPlan);
 
 router
   .route('/:id')
-  .get(authorize('admin', 'staff'), getPlanById)
+  .get(authorize('admin', 'staff', 'customer'), getPlanById)
   .put(authorize('admin'), updatePlan)
   .delete(authorize('admin'), deletePlan);
 

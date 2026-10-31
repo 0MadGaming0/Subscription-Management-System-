@@ -169,6 +169,11 @@ const subscriptionSchema = new mongoose.Schema(
   }
 );
 
+// High-performance compound indexes for subscription metrics and lifecycle filters
+subscriptionSchema.index({ status: 1, createdAt: -1 });
+subscriptionSchema.index({ customer: 1, status: 1 });
+subscriptionSchema.index({ plan: 1, status: 1 });
+
 const Subscription = mongoose.model('Subscription', subscriptionSchema);
 
 module.exports = {

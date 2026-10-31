@@ -152,6 +152,10 @@ const invoiceSchema = new mongoose.Schema(
       type: Date,
       default: null,
     },
+    discountReleased: {
+      type: Boolean,
+      default: false,
+    },
     notes: {
       type: String,
       trim: true,
@@ -160,6 +164,23 @@ const invoiceSchema = new mongoose.Schema(
   },
   {
     timestamps: true,
+  }
+);
+
+// High-performance compound indexes for dashboard analytics and filtering
+invoiceSchema.index({ status: 1, dueDate: 1, amountDue: 1 });
+invoiceSchema.index({ invoiceDate: -1, status: 1 });
+invoiceSchema.index({ customer: 1, invoiceDate: -1 });
+
+// Database-level uniqueness protection against concurrent/duplicate billing for the same period
+invoiceSchema.index(
+  { subscription: 1, 'billingPeriod.startDate': 1 },
+  {
+    unique: true,
+    partialFilterExpression: {
+      subscription: { $type: 'objectId' },
+      status: { $ne: 'Cancelled' },
+    },
   }
 );
 

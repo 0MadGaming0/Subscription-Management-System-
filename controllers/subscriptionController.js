@@ -99,12 +99,8 @@ const calculateSubscriptionFinancials = async (lineItems, planRecord, discountAm
       throw new Error(`Tax percentage in line item #${i + 1} must be between 0 and 100.`);
     }
 
-    const itemSubtotal = quantity * unitPrice;
-    const itemTax = itemSubtotal * (taxPercentage / 100);
-    const lineTotal = itemSubtotal + itemTax;
-
-    subtotal += itemSubtotal;
-    taxAmount += itemTax;
+    const lineSubtotal = quantity * unitPrice;
+    subtotal += lineSubtotal;
 
     processedItems.push({
       product: product._id,
@@ -113,7 +109,7 @@ const calculateSubscriptionFinancials = async (lineItems, planRecord, discountAm
       quantity,
       unitPrice,
       taxPercentage,
-      lineTotal: Math.round(lineTotal * 100) / 100,
+      lineSubtotal,
     });
   }
 
@@ -125,13 +121,41 @@ const calculateSubscriptionFinancials = async (lineItems, planRecord, discountAm
   }
 
   const validDiscount = Math.max(0, Number(discountAmount) || 0);
-  const rawTotal = subtotal + taxAmount - validDiscount;
+
+  // M2: Consistent tax calculation ordering (discounts reduce taxable base if discount_before_tax)
+  const taxDiscountOrder = process.env.TAX_DISCOUNT_ORDER || 'discount_before_tax';
+  const discountRatio = subtotal > 0 && taxDiscountOrder === 'discount_before_tax'
+    ? Math.max(0, 1 - (validDiscount / subtotal))
+    : 1;
+
+  let totalTax = 0;
+  const finalLineItems = [];
+
+  for (const item of processedItems) {
+    const effectiveTaxableBase = item.lineSubtotal * discountRatio;
+    const lineTax = Math.round(effectiveTaxableBase * (item.taxPercentage / 100) * 100) / 100;
+    const lineTotal = Math.round((item.lineSubtotal + lineTax) * 100) / 100;
+    totalTax += lineTax;
+
+    finalLineItems.push({
+      product: item.product,
+      variant: item.variant,
+      description: item.description,
+      quantity: item.quantity,
+      unitPrice: item.unitPrice,
+      taxPercentage: item.taxPercentage,
+      lineTotal,
+    });
+  }
+
+  totalTax = Math.round(totalTax * 100) / 100;
+  const rawTotal = subtotal + totalTax - validDiscount;
   const totalAmount = Math.max(0, Math.round(rawTotal * 100) / 100);
 
   return {
-    lineItems: processedItems,
+    lineItems: finalLineItems,
     subtotal: Math.round(subtotal * 100) / 100,
-    taxAmount: Math.round(taxAmount * 100) / 100,
+    taxAmount: totalTax,
     discountAmount: validDiscount,
     totalAmount,
   };
@@ -361,7 +385,7 @@ const createFromTemplate = async (req, res, next) => {
  */
 const getSubscriptions = async (req, res, next) => {
   try {
-    const { status, plan, customer } = req.query;
+    const { status, plan, customer, page, limit } = req.query;
     const filter = {};
 
     // Customer Ownership Guard: Customers see ONLY their own subscriptions
@@ -385,15 +409,28 @@ const getSubscriptions = async (req, res, next) => {
       filter.plan = plan;
     }
 
-    const subscriptions = await Subscription.find(filter)
-      .populate('customer', 'name email role')
-      .populate('plan', 'name price billingFrequency minimumQuantity autoClose allowEarlyClose allowPause allowRenewal')
-      .populate('lineItems.product', 'name type salesPrice')
-      .sort({ createdAt: -1 });
+    const pageNum = Math.max(1, parseInt(page, 10) || 1);
+    const limitNum = Math.min(100, Math.max(1, parseInt(limit, 10) || 20));
+    const skip = (pageNum - 1) * limitNum;
+
+    const [total, subscriptions] = await Promise.all([
+      Subscription.countDocuments(filter),
+      Subscription.find(filter)
+        .populate('customer', 'name email role')
+        .populate('plan', 'name price billingFrequency minimumQuantity autoClose allowEarlyClose allowPause allowRenewal')
+        .populate('lineItems.product', 'name type salesPrice')
+        .sort({ createdAt: -1 })
+        .skip(skip)
+        .limit(limitNum),
+    ]);
 
     return res.status(200).json({
       success: true,
       count: subscriptions.length,
+      total,
+      page: pageNum,
+      totalPages: Math.ceil(total / limitNum),
+      limit: limitNum,
       subscriptions,
     });
   } catch (error) {
@@ -648,7 +685,17 @@ const transitionStatus = async (req, res, next) => {
       subscription: updated,
     });
   } catch (error) {
-    return res.status(400).json({ success: false, message: error.message });
+    // L1: Business rule violations from executeStatusTransition are 400; unexpected errors go to centralized handler
+    const isBusinessRuleError =
+      error.message &&
+      (error.message.includes('does not allow') ||
+        error.message.includes('Invalid transition') ||
+        error.message.includes('Cannot transition') ||
+        error.message.includes('Associated plan could not be retrieved'));
+    if (isBusinessRuleError) {
+      return res.status(400).json({ success: false, message: error.message });
+    }
+    return next(error);
   }
 };
 

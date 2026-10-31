@@ -27,7 +27,11 @@ const errorHandler = (err, req, res, next) => {
     statusCode = 409;
     const field = Object.keys(err.keyValue || {})[0] || 'field';
     const value = err.keyValue ? err.keyValue[field] : '';
-    message = `An account with this ${field} ('${value}') already exists.`;
+    if (field === 'email') {
+      message = `An account with this email ('${value}') already exists.`;
+    } else {
+      message = `A record with this ${field} ('${value}') already exists.`;
+    }
   }
 
   // Mongoose Validation Error

@@ -7,6 +7,8 @@ const {
   createStaff,
   forgotPassword,
   resetPassword,
+  updateMe,
+  changePassword,
 } = require('../controllers/authController');
 const { protect } = require('../middleware/authMiddleware');
 const { authorize } = require('../middleware/roleMiddleware');
@@ -51,6 +53,8 @@ router.post('/reset-password/:token', sensitiveOpLimiter, resetPassword);
 
 // --- Authenticated Profile Route ---
 router.get('/me', protect, getMe);
+router.put('/me', protect, updateMe);
+router.put('/me/password', protect, changePassword);
 
 // --- Admin-Only Management Route ---
 router.post('/staff', protect, authorize('admin'), createStaff);

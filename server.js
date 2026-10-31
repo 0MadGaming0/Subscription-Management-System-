@@ -26,6 +26,7 @@ const subscriptionRoutes = require('./routes/subscriptionRoutes');
 const discountRoutes = require('./routes/discountRoutes');
 const invoiceRoutes = require('./routes/invoiceRoutes');
 const paymentRoutes = require('./routes/paymentRoutes');
+const dashboardRoutes = require('./routes/dashboardRoutes');
 const { notFound, errorHandler } = require('./middleware/errorMiddleware');
 
 const app = express();
@@ -86,6 +87,7 @@ app.get('/api/health', (req, res) => {
       'Part 2: Product & Plan Management',
       'Part 3: Quotation & Subscription Management',
       'Part 4: Invoicing, Recurring Billing, Discounts & Payments',
+      'Part 5: Dashboard, Analytics & Reporting',
     ],
     timestamp: new Date().toISOString(),
     uptime: process.uptime(),
@@ -101,6 +103,7 @@ app.use('/api/subscriptions', subscriptionRoutes);
 app.use('/api/discounts', discountRoutes);
 app.use('/api/invoices', invoiceRoutes);
 app.use('/api/payments', paymentRoutes);
+app.use('/api/dashboard', dashboardRoutes);
 
 // ==========================================
 // 4. ERROR HANDLING MIDDLEWARE

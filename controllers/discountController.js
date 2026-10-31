@@ -1,6 +1,7 @@
 const mongoose = require('mongoose');
 const Discount = require('../models/Discount');
 const Product = require('../models/Product');
+const Invoice = require('../models/Invoice');
 const { evaluateDiscount } = require('../services/billingService');
 
 /**
@@ -128,13 +129,27 @@ const getDiscounts = async (req, res, next) => {
     if (type) filter.type = type;
     if (appliesTo) filter.appliesTo = appliesTo;
 
+    // M4: Pagination support
+    const page = Math.max(1, parseInt(req.query.page, 10) || 1);
+    const limit = Math.min(100, Math.max(1, parseInt(req.query.limit, 10) || 20));
+    const skip = (page - 1) * limit;
+
+    const total = await Discount.countDocuments(filter);
+    const totalPages = Math.ceil(total / limit) || 1;
+
     const discounts = await Discount.find(filter)
       .populate('applicableProducts', 'name salesPrice')
-      .sort({ createdAt: -1 });
+      .sort({ createdAt: -1 })
+      .skip(skip)
+      .limit(limit);
 
     return res.status(200).json({
       success: true,
       count: discounts.length,
+      total,
+      page,
+      totalPages,
+      limit,
       discounts,
     });
   } catch (error) {
@@ -254,6 +269,15 @@ const deleteDiscount = async (req, res, next) => {
     const discount = await Discount.findById(id);
     if (!discount) {
       return res.status(404).json({ success: false, message: 'Discount not found.' });
+    }
+
+    // Fix H2: Check if discount is referenced by any invoice before deleting
+    const referencingInvoicesCount = await Invoice.countDocuments({ 'discount.discountId': id });
+    if (referencingInvoicesCount > 0) {
+      return res.status(409).json({
+        success: false,
+        message: `Cannot delete discount '${discount.code}'. It is referenced by ${referencingInvoicesCount} invoice(s). Consider deactivating it instead by setting isActive to false.`,
+      });
     }
 
     await Discount.findByIdAndDelete(id);

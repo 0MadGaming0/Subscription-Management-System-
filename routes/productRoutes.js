@@ -16,12 +16,12 @@ router.use(protect);
 
 router
   .route('/')
-  .get(authorize('admin', 'staff'), getProducts)
+  .get(authorize('admin', 'staff', 'customer'), getProducts)
   .post(authorize('admin'), createProduct);
 
 router
   .route('/:id')
-  .get(authorize('admin', 'staff'), getProductById)
+  .get(authorize('admin', 'staff', 'customer'), getProductById)
   .put(authorize('admin'), updateProduct)
   .delete(authorize('admin'), deleteProduct);
 

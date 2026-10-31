@@ -190,6 +190,9 @@ const evaluateDiscount = async (discountCode, { subtotal, totalQuantity, lineIte
 
 /**
  * Server-authoritative calculation of invoice financial figures
+ * Supports configurable tax calculation ordering:
+ * - discount_before_tax (default): Tax is assessed on the net post-discount taxable amount.
+ * - tax_before_discount: Tax is assessed on the full gross subtotal.
  * @param {Array} lineItems
  * @param {string} discountCode
  * @returns {Promise<Object>}
@@ -200,9 +203,8 @@ const calculateInvoiceFinancials = async (lineItems, discountCode = null) => {
   }
 
   let subtotal = 0;
-  let taxAmount = 0;
   let totalQuantity = 0;
-  const processedItems = [];
+  const rawItems = [];
 
   for (let i = 0; i < lineItems.length; i++) {
     const item = lineItems[i];
@@ -242,26 +244,20 @@ const calculateInvoiceFinancials = async (lineItems, discountCode = null) => {
     }
 
     const lineSubtotal = quantity * unitPrice;
-    const lineTax = Math.round(lineSubtotal * (taxPercentage / 100) * 100) / 100;
-    const lineTotal = Math.round((lineSubtotal + lineTax) * 100) / 100;
-
     subtotal += lineSubtotal;
-    taxAmount += lineTax;
 
-    processedItems.push({
+    rawItems.push({
       product: product._id,
       variant: variantData,
       description: item.description ? String(item.description).trim() : product.name,
       quantity,
       unitPrice,
       taxPercentage,
-      taxAmount: lineTax,
-      lineTotal,
+      lineSubtotal,
     });
   }
 
   subtotal = Math.round(subtotal * 100) / 100;
-  taxAmount = Math.round(taxAmount * 100) / 100;
 
   // Evaluate discount
   let discountInfo = null;
@@ -271,7 +267,7 @@ const calculateInvoiceFinancials = async (lineItems, discountCode = null) => {
     const evalResult = await evaluateDiscount(discountCode, {
       subtotal,
       totalQuantity,
-      lineItems: processedItems,
+      lineItems: rawItems,
     });
 
     if (evalResult.isValid) {
@@ -288,18 +284,96 @@ const calculateInvoiceFinancials = async (lineItems, discountCode = null) => {
     }
   }
 
-  const rawTotal = subtotal + taxAmount - discountAmount;
+  // M2: Tax calculation ordering - discounts reduce taxable base if discount_before_tax
+  const taxDiscountOrder = process.env.TAX_DISCOUNT_ORDER || 'discount_before_tax';
+  let totalTax = 0;
+  const processedItems = [];
+
+  const discountRatio = subtotal > 0 && taxDiscountOrder === 'discount_before_tax'
+    ? Math.max(0, 1 - (discountAmount / subtotal))
+    : 1;
+
+  for (const item of rawItems) {
+    const effectiveTaxableBase = item.lineSubtotal * discountRatio;
+    const lineTax = Math.round(effectiveTaxableBase * (item.taxPercentage / 100) * 100) / 100;
+    const lineTotal = Math.round((item.lineSubtotal + lineTax) * 100) / 100;
+
+    totalTax += lineTax;
+
+    processedItems.push({
+      product: item.product,
+      variant: item.variant,
+      description: item.description,
+      quantity: item.quantity,
+      unitPrice: item.unitPrice,
+      taxPercentage: item.taxPercentage,
+      taxAmount: lineTax,
+      lineTotal,
+    });
+  }
+
+  totalTax = Math.round(totalTax * 100) / 100;
+  const rawTotal = subtotal + totalTax - discountAmount;
   const totalAmount = Math.max(0, Math.round(rawTotal * 100) / 100);
 
   return {
     lineItems: processedItems,
     subtotal,
-    taxAmount,
+    taxAmount: totalTax,
     discount: discountInfo,
     discountAmount,
     totalAmount,
     amountDue: totalAmount,
   };
+};
+
+/**
+ * Atomically reserves discount usage if under maxUsageCount.
+ * Prevents race conditions exceeding quota during concurrent requests.
+ * @param {string|ObjectId} discountId
+ * @returns {Promise<Object>} Updated discount document
+ */
+const reserveDiscountUsage = async (discountId) => {
+  if (!discountId) return null;
+
+  const updatedDiscount = await Discount.findOneAndUpdate(
+    {
+      _id: discountId,
+      isActive: true,
+      $or: [
+        { maxUsageCount: null },
+        { maxUsageCount: { $exists: false } },
+        { $expr: { $lt: ['$currentUsageCount', '$maxUsageCount'] } },
+      ],
+    },
+    { $inc: { currentUsageCount: 1 } },
+    { new: true }
+  );
+
+  if (!updatedDiscount) {
+    throw new Error('Discount usage limit has been reached or discount is no longer active.');
+  }
+
+  return updatedDiscount;
+};
+
+/**
+ * Releases reserved discount usage (e.g. upon draft invoice cancellation).
+ * Avoids decrementing below 0.
+ * @param {string|ObjectId} discountId
+ * @returns {Promise<Object>}
+ */
+const releaseDiscountUsage = async (discountId) => {
+  if (!discountId) return null;
+
+  return await Discount.findOneAndUpdate(
+    {
+      _id: discountId,
+      currentUsageCount: { $gt: 0 },
+    },
+    { $inc: { currentUsageCount: -1 } },
+    { new: true }
+  );
 };
 
 /**
@@ -334,13 +408,25 @@ const createInvoiceFromSubscription = async (subscriptionId, options = {}) => {
     ? new Date(lastInvoice.billingPeriod.endDate)
     : new Date(subscription.startDate);
 
+  // Fix C1: Prevent premature invoice generation for future periods
+  // Only bill if periodStart <= targetDate (unless force option is provided)
+  if (!options.force && periodStart > targetDate) {
+    return {
+      created: false,
+      notDue: true,
+      message: `Subscription ${subscription.subscriptionNumber} is not due for billing yet. Next billing period starts on ${periodStart.toISOString().split('T')[0]}.`,
+    };
+  }
+
   const billingPeriod = getBillingPeriodDates(periodStart, plan.billingFrequency);
 
   // Idempotency check: Does an invoice already exist overlapping this exact billing period?
   const existingInvoice = await Invoice.findOne({
     subscription: subscription._id,
-    'billingPeriod.startDate': { $gte: new Date(billingPeriod.startDate.getTime() - 1000) },
-    'billingPeriod.endDate': { $lte: new Date(billingPeriod.endDate.getTime() + 1000) },
+    'billingPeriod.startDate': {
+      $gte: new Date(billingPeriod.startDate.getTime() - 1000),
+      $lte: new Date(billingPeriod.startDate.getTime() + 1000),
+    },
     status: { $ne: 'Cancelled' },
   });
 
@@ -358,35 +444,56 @@ const createInvoiceFromSubscription = async (subscriptionId, options = {}) => {
     options.discountCode || null
   );
 
+  // Atomically reserve discount quota if discount is applied (Fix C2)
+  if (financials.discount && financials.discount.discountId) {
+    await reserveDiscountUsage(financials.discount.discountId);
+  }
+
   const invoiceNumber = await generateInvoiceNumber();
   const invoiceDate = targetDate;
   const dueDate = calculateDueDate(invoiceDate, subscription.paymentTerms);
 
-  const invoice = await Invoice.create({
-    invoiceNumber,
-    subscription: subscription._id,
-    customer: subscription.customer._id,
-    invoiceDate,
-    dueDate,
-    billingPeriod,
-    lineItems: financials.lineItems,
-    subtotal: financials.subtotal,
-    taxAmount: financials.taxAmount,
-    discount: financials.discount,
-    discountAmount: financials.discountAmount,
-    totalAmount: financials.totalAmount,
-    amountPaid: 0,
-    amountDue: financials.totalAmount,
-    status: options.autoConfirm ? 'Confirmed' : 'Draft',
-    confirmedAt: options.autoConfirm ? new Date() : null,
-    notes: options.notes || `Generated from subscription ${subscription.subscriptionNumber} (${plan.billingFrequency} billing).`,
-  });
-
-  // If discount was applied, increment its usage count
-  if (financials.discount && financials.discount.discountId) {
-    await Discount.findByIdAndUpdate(financials.discount.discountId, {
-      $inc: { currentUsageCount: 1 },
+  let invoice;
+  try {
+    invoice = await Invoice.create({
+      invoiceNumber,
+      subscription: subscription._id,
+      customer: subscription.customer._id,
+      invoiceDate,
+      dueDate,
+      billingPeriod,
+      lineItems: financials.lineItems,
+      subtotal: financials.subtotal,
+      taxAmount: financials.taxAmount,
+      discount: financials.discount,
+      discountAmount: financials.discountAmount,
+      totalAmount: financials.totalAmount,
+      amountPaid: 0,
+      amountDue: financials.totalAmount,
+      status: options.autoConfirm ? 'Confirmed' : 'Draft',
+      confirmedAt: options.autoConfirm ? new Date() : null,
+      notes: options.notes || `Generated from subscription ${subscription.subscriptionNumber} (${plan.billingFrequency} billing).`,
     });
+  } catch (createErr) {
+    // If invoice creation fails, release the reserved discount
+    if (financials.discount && financials.discount.discountId) {
+      await releaseDiscountUsage(financials.discount.discountId);
+    }
+
+    // Handle concurrent billing requests safely
+    if (createErr.code === 11000) {
+      const conflictInvoice = await Invoice.findOne({
+        subscription: subscription._id,
+        status: { $ne: 'Cancelled' },
+      }).sort({ createdAt: -1 });
+
+      return {
+        created: false,
+        invoice: conflictInvoice,
+        message: `Concurrent billing request safely handled: Invoice for subscription ${subscription.subscriptionNumber} was already created.`,
+      };
+    }
+    throw createErr;
   }
 
   return {
@@ -398,7 +505,7 @@ const createInvoiceFromSubscription = async (subscriptionId, options = {}) => {
 
 /**
  * Runs a recurring billing batch across all eligible active subscriptions.
- * Fully idempotent: safely skips already billed periods and handles auto-close on expiration.
+ * Fully idempotent: safely skips already billed periods, skips future periods, and handles auto-close on expiration.
  * @param {Object} options
  * @returns {Promise<Object>}
  */
@@ -415,6 +522,7 @@ const runRecurringBillingBatch = async (options = {}) => {
     totalSubscriptionsEvaluated: activeSubscriptions.length,
     invoicesGenerated: 0,
     invoicesSkippedAlreadyBilled: 0,
+    invoicesSkippedNotDueYet: 0,
     subscriptionsClosedExpired: 0,
     errors: [],
     details: [],
@@ -458,6 +566,13 @@ const runRecurringBillingBatch = async (options = {}) => {
           totalAmount: result.invoice.totalAmount,
           action: 'invoice_generated',
         });
+      } else if (result.notDue) {
+        report.invoicesSkippedNotDueYet += 1;
+        report.details.push({
+          subscriptionNumber: sub.subscriptionNumber,
+          action: 'skipped_not_due',
+          reason: result.message,
+        });
       } else {
         report.invoicesSkippedAlreadyBilled += 1;
         report.details.push({
@@ -482,6 +597,8 @@ module.exports = {
   calculateDueDate,
   getBillingPeriodDates,
   evaluateDiscount,
+  reserveDiscountUsage,
+  releaseDiscountUsage,
   calculateInvoiceFinancials,
   createInvoiceFromSubscription,
   runRecurringBillingBatch,

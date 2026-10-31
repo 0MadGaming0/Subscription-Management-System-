@@ -1,6 +1,8 @@
 const mongoose = require('mongoose');
 const Plan = require('../models/Plan');
 const Product = require('../models/Product');
+const QuotationTemplate = require('../models/QuotationTemplate');
+const { Subscription } = require('../models/Subscription');
 
 const ALLOWED_BILLING_FREQUENCIES = ['daily', 'weekly', 'monthly', 'yearly'];
 
@@ -151,7 +153,10 @@ const getPlans = async (req, res, next) => {
       filter.billingFrequency = String(billingFrequency).toLowerCase();
     }
 
-    if (isActive !== undefined) {
+    // H1: Customers can ONLY browse active plans
+    if (req.user && req.user.role === 'customer') {
+      filter.isActive = true;
+    } else if (isActive !== undefined) {
       filter.isActive = String(isActive).toLowerCase() === 'true';
     }
 
@@ -165,13 +170,27 @@ const getPlans = async (req, res, next) => {
       filter.product = product;
     }
 
+    // M4: Pagination support
+    const page = Math.max(1, parseInt(req.query.page, 10) || 1);
+    const limit = Math.min(100, Math.max(1, parseInt(req.query.limit, 10) || 20));
+    const skip = (page - 1) * limit;
+
+    const total = await Plan.countDocuments(filter);
+    const totalPages = Math.ceil(total / limit) || 1;
+
     const plans = await Plan.find(filter)
       .populate('product', 'name type salesPrice variants isActive')
-      .sort({ createdAt: -1 });
+      .sort({ createdAt: -1 })
+      .skip(skip)
+      .limit(limit);
 
     return res.status(200).json({
       success: true,
       count: plans.length,
+      total,
+      page,
+      totalPages,
+      limit,
       plans,
     });
   } catch (error) {
@@ -198,6 +217,14 @@ const getPlanById = async (req, res, next) => {
     const plan = await Plan.findById(id).populate('product', 'name type salesPrice variants isActive');
 
     if (!plan) {
+      return res.status(404).json({
+        success: false,
+        message: 'Plan not found.',
+      });
+    }
+
+    // H1: Customers cannot access inactive plans
+    if (req.user && req.user.role === 'customer' && !plan.isActive) {
       return res.status(404).json({
         success: false,
         message: 'Plan not found.',
@@ -369,15 +396,22 @@ const deletePlan = async (req, res, next) => {
       });
     }
 
-    // Safety check: Prevent deletion if actively referenced by subscriptions
-    if (mongoose.models.Subscription) {
-      const activeSubsCount = await mongoose.models.Subscription.countDocuments({ plan: id });
-      if (activeSubsCount > 0) {
-        return res.status(400).json({
-          success: false,
-          message: `Cannot delete plan. It is actively referenced by ${activeSubsCount} subscription(s).`,
-        });
-      }
+    // Fix H2: Prevent deletion if referenced by quotation templates
+    const templateRefCount = await QuotationTemplate.countDocuments({ plan: id });
+    if (templateRefCount > 0) {
+      return res.status(409).json({
+        success: false,
+        message: `Cannot delete plan '${plan.name}'. It is referenced by ${templateRefCount} quotation template(s). Consider deactivating it instead by setting isActive to false.`,
+      });
+    }
+
+    // Fix H2: Prevent deletion if actively referenced by subscriptions
+    const activeSubsCount = await Subscription.countDocuments({ plan: id });
+    if (activeSubsCount > 0) {
+      return res.status(409).json({
+        success: false,
+        message: `Cannot delete plan '${plan.name}'. It is actively referenced by ${activeSubsCount} subscription(s). Consider deactivating it instead by setting isActive to false.`,
+      });
     }
 
     await Plan.findByIdAndDelete(id);

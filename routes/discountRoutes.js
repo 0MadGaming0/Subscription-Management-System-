@@ -14,7 +14,8 @@ const router = express.Router();
 
 router.use(protect);
 
-router.post('/validate', authorize('admin', 'staff'), validateDiscount);
+// H1: Customers can validate discount codes during checkout; admin/staff manage discounts
+router.post('/validate', authorize('admin', 'staff', 'customer'), validateDiscount);
 
 router
   .route('/')

@@ -7,6 +7,8 @@ const {
   calculateInvoiceFinancials,
   createInvoiceFromSubscription,
   runRecurringBillingBatch,
+  reserveDiscountUsage,
+  releaseDiscountUsage,
 } = require('../services/billingService');
 
 /**
@@ -48,26 +50,40 @@ const createInvoice = async (req, res, next) => {
 
     // 3. Server-authoritative calculations
     const financials = await calculateInvoiceFinancials(lineItems, discountCode);
+
+    // Atomically reserve discount quota if discount applied (Fix C2)
+    if (financials.discount && financials.discount.discountId) {
+      await reserveDiscountUsage(financials.discount.discountId);
+    }
+
     const invoiceNumber = await generateInvoiceNumber();
 
-    const invoice = await Invoice.create({
-      invoiceNumber,
-      customer: customerUser._id,
-      subscription: subscription && mongoose.Types.ObjectId.isValid(subscription) ? subscription : null,
-      invoiceDate: parsedInvoiceDate,
-      dueDate: parsedDueDate,
-      lineItems: financials.lineItems,
-      subtotal: financials.subtotal,
-      taxAmount: financials.taxAmount,
-      discount: financials.discount,
-      discountAmount: financials.discountAmount,
-      totalAmount: financials.totalAmount,
-      amountPaid: 0,
-      amountDue: financials.totalAmount,
-      status: 'Draft',
-      paymentStatus: 'Unpaid',
-      notes: notes ? String(notes).trim() : '',
-    });
+    let invoice;
+    try {
+      invoice = await Invoice.create({
+        invoiceNumber,
+        customer: customerUser._id,
+        subscription: subscription && mongoose.Types.ObjectId.isValid(subscription) ? subscription : null,
+        invoiceDate: parsedInvoiceDate,
+        dueDate: parsedDueDate,
+        lineItems: financials.lineItems,
+        subtotal: financials.subtotal,
+        taxAmount: financials.taxAmount,
+        discount: financials.discount,
+        discountAmount: financials.discountAmount,
+        totalAmount: financials.totalAmount,
+        amountPaid: 0,
+        amountDue: financials.totalAmount,
+        status: 'Draft',
+        paymentStatus: 'Unpaid',
+        notes: notes ? String(notes).trim() : '',
+      });
+    } catch (createErr) {
+      if (financials.discount && financials.discount.discountId) {
+        await releaseDiscountUsage(financials.discount.discountId);
+      }
+      throw createErr;
+    }
 
     const populated = await Invoice.findById(invoice._id)
       .populate('customer', 'name email role')
@@ -79,7 +95,7 @@ const createInvoice = async (req, res, next) => {
       invoice: populated,
     });
   } catch (error) {
-    if (error.message && (error.message.includes('Line item') || error.message.includes('discount'))) {
+    if (error.message && (error.message.includes('Line item') || error.message.includes('discount') || error.message.includes('Discount'))) {
       return res.status(400).json({ success: false, message: error.message });
     }
     next(error);
@@ -105,16 +121,20 @@ const generateSubscriptionInvoice = async (req, res, next) => {
     return res.status(statusCode).json({
       success: true,
       created: result.created,
+      notDue: Boolean(result.notDue),
       message: result.message,
       invoice: result.invoice,
     });
   } catch (error) {
-    return res.status(400).json({ success: false, message: error.message });
+    if (error.message && (error.message.includes('not found') || error.message.includes('Cannot invoice') || error.message.includes('Line item') || error.message.includes('Discount'))) {
+      return res.status(400).json({ success: false, message: error.message });
+    }
+    next(error);
   }
 };
 
 /**
- * @desc    Get all invoices (with customer data isolation)
+ * @desc    Get all invoices (with customer data isolation and pagination M4)
  * @route   GET /api/invoices
  * @access  Private (Admin, Staff, Customer)
  */
@@ -138,15 +158,29 @@ const getInvoices = async (req, res, next) => {
     if (subscription) filter.subscription = subscription;
     if (search) filter.invoiceNumber = { $regex: String(search).trim(), $options: 'i' };
 
+    // M4: Pagination support
+    const page = Math.max(1, parseInt(req.query.page, 10) || 1);
+    const limit = Math.min(100, Math.max(1, parseInt(req.query.limit, 10) || 20));
+    const skip = (page - 1) * limit;
+
+    const total = await Invoice.countDocuments(filter);
+    const totalPages = Math.ceil(total / limit) || 1;
+
     const invoices = await Invoice.find(filter)
       .populate('customer', 'name email role')
       .populate('subscription', 'subscriptionNumber status')
       .populate('lineItems.product', 'name salesPrice')
-      .sort({ invoiceDate: -1 });
+      .sort({ invoiceDate: -1 })
+      .skip(skip)
+      .limit(limit);
 
     return res.status(200).json({
       success: true,
       count: invoices.length,
+      total,
+      page,
+      totalPages,
+      limit,
       invoices,
     });
   } catch (error) {
@@ -263,6 +297,12 @@ const cancelInvoice = async (req, res, next) => {
         success: false,
         message: `Cannot cancel invoice with recorded payments ($${invoice.amountPaid}). Refund or adjust payments first.`,
       });
+    }
+
+    // Fix C2: Release reserved discount usage quota if not already released
+    if (invoice.discount && invoice.discount.discountId && !invoice.discountReleased) {
+      await releaseDiscountUsage(invoice.discount.discountId);
+      invoice.discountReleased = true;
     }
 
     invoice.status = 'Cancelled';

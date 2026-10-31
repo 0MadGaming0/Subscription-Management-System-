@@ -70,6 +70,9 @@ const userSchema = new mongoose.Schema(
   }
 );
 
+// High-performance sparse index for password reset token lookups (M3)
+userSchema.index({ resetPasswordToken: 1 }, { sparse: true });
+
 /**
  * Pre-save middleware to hash passwords automatically when modified.
  * Work factor: 12 salt rounds for production-grade security.

@@ -131,6 +131,15 @@ backend/
 - `GET /api/payments` (Admin, Staff, Customer) — Lists payments (Customers isolated to own).
 - `GET /api/payments/:id` (Admin, Staff, Customer) — Views payment details.
 
+### Dashboard & Analytics (`/api/dashboard`)
+- `GET /api/dashboard/summary` (Admin & Staff) — High-level counts, active/paused subscriptions, overdue amounts, and actual revenue collected.
+- `GET /api/dashboard/revenue` (Admin & Staff) — Aggregated revenue over intervals (`daily`, `weekly`, `monthly`, `yearly`) with period-over-period comparison.
+- `GET /api/dashboard/subscriptions` (Admin & Staff) — Status distributions, billing frequency breakdown, and new subscription counts.
+- `GET /api/dashboard/invoices` (Admin & Staff) — Overdue invoices, approaching due dates, and status distributions.
+- `GET /api/dashboard/payments` (Admin & Staff) — Total collections, payment method breakdowns, timelines, and partial payment statistics.
+- `GET /api/dashboard/export/revenue` (Admin & Staff) — CSV download of revenue and payment transactions.
+- `GET /api/dashboard/export/invoices` (Admin & Staff) — CSV download of invoice records.
+
 ---
 
 ## 3. Business Rules & Financial Integrity
@@ -153,3 +162,7 @@ backend/
 5. **Customer Multi-Tenant Isolation**:
    - Customers can **only** view their own subscriptions, invoices, and payments.
    - Requests to view or modify records belonging to other customers return `403 Forbidden`.
+   - Customers are strictly blocked from accessing `/api/dashboard/*`.
+6. **Sub-Two-Second Analytics Performance**:
+   - Optimized with compound indexes on `(status, dueDate, amountDue)`, `(paymentDate, paymentMethod)`, and `(status, createdAt)`.
+   - Parallel aggregation pipelines executing with `Promise.all()` to maximize throughput.

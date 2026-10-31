@@ -72,6 +72,11 @@ const paymentSchema = new mongoose.Schema(
   }
 );
 
+// High-performance compound indexes for payment analytics and timelines
+paymentSchema.index({ paymentDate: -1, paymentMethod: 1 });
+paymentSchema.index({ customer: 1, paymentDate: -1 });
+paymentSchema.index({ invoice: 1, paymentDate: -1 });
+
 const Payment = mongoose.model('Payment', paymentSchema);
 
 module.exports = {

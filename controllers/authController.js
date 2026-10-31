@@ -381,6 +381,97 @@ const resetPassword = async (req, res, next) => {
   }
 };
 
+/**
+ * @desc    Update current user's own profile (name only)
+ * @route   PUT /api/auth/me
+ * @access  Private (Authenticated users)
+ */
+const updateMe = async (req, res, next) => {
+  try {
+    const { name } = req.body;
+
+    if (!name || typeof name !== 'string' || !name.trim()) {
+      return res.status(400).json({
+        success: false,
+        message: 'Name is required and must be a valid string.',
+      });
+    }
+
+    const user = await User.findByIdAndUpdate(
+      req.user._id,
+      { name: name.trim() },
+      { new: true, runValidators: true }
+    );
+
+    return res.status(200).json({
+      success: true,
+      message: 'Profile updated successfully.',
+      user: sanitizeUser(user),
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+/**
+ * @desc    Change current user's own password
+ * @route   PUT /api/auth/me/password
+ * @access  Private (Authenticated users)
+ */
+const changePassword = async (req, res, next) => {
+  try {
+    const { currentPassword, newPassword } = req.body;
+
+    if (!currentPassword || !newPassword) {
+      return res.status(400).json({
+        success: false,
+        message: 'Both currentPassword and newPassword are required.',
+      });
+    }
+
+    // Explicitly select password hash for comparison
+    const user = await User.findById(req.user._id).select('+password');
+    if (!user) {
+      return res.status(404).json({ success: false, message: 'User not found.' });
+    }
+
+    const isMatch = await user.comparePassword(currentPassword);
+    if (!isMatch) {
+      return res.status(401).json({
+        success: false,
+        message: 'Current password is incorrect.',
+      });
+    }
+
+    // Validate new password strength
+    const passwordValidation = validatePassword(newPassword);
+    if (!passwordValidation.isValid) {
+      return res.status(400).json({
+        success: false,
+        message: 'New password does not meet security requirements.',
+        errors: passwordValidation.errors,
+      });
+    }
+
+    if (currentPassword === newPassword) {
+      return res.status(400).json({
+        success: false,
+        message: 'New password must be different from the current password.',
+      });
+    }
+
+    user.password = newPassword;
+    await user.save();
+
+    return res.status(200).json({
+      success: true,
+      message: 'Password changed successfully.',
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
 module.exports = {
   register,
   login,
@@ -388,5 +479,7 @@ module.exports = {
   createStaff,
   forgotPassword,
   resetPassword,
+  updateMe,
+  changePassword,
 };
 

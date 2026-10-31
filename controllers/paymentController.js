@@ -1,6 +1,7 @@
 const mongoose = require('mongoose');
 const { Payment, PAYMENT_METHODS } = require('../models/Payment');
 const Invoice = require('../models/Invoice');
+const { Subscription } = require('../models/Subscription');
 const User = require('../models/User');
 
 /**
@@ -136,6 +137,22 @@ const recordPayment = async (req, res, next) => {
 
     await invoice.save();
 
+    // H3: Automatically activate a Confirmed subscription upon full settlement
+    if (invoice.amountDue <= 0.001 && invoice.subscription) {
+      const sub = await Subscription.findById(invoice.subscription);
+      if (sub && sub.status === 'Confirmed') {
+        sub.status = 'Active';
+        sub.statusHistory.push({
+          fromStatus: 'Confirmed',
+          toStatus: 'Active',
+          changedAt: new Date(),
+          changedBy: req.user._id,
+          note: `Auto-activated upon full settlement of invoice ${invoice.invoiceNumber}`,
+        });
+        await sub.save();
+      }
+    }
+
     const populatedPayment = await Payment.findById(payment._id)
       .populate('customer', 'name email')
       .populate('invoice', 'invoiceNumber totalAmount amountPaid amountDue status paymentStatus')
@@ -166,7 +183,7 @@ const recordPayment = async (req, res, next) => {
  */
 const getPayments = async (req, res, next) => {
   try {
-    const { invoiceId, customerId, paymentMethod } = req.query;
+    const { invoiceId, customerId, paymentMethod, page, limit } = req.query;
     const filter = {};
 
     // Customer Isolation Guard
@@ -188,15 +205,28 @@ const getPayments = async (req, res, next) => {
 
     if (paymentMethod) filter.paymentMethod = paymentMethod;
 
-    const payments = await Payment.find(filter)
-      .populate('customer', 'name email')
-      .populate('invoice', 'invoiceNumber totalAmount amountPaid amountDue status')
-      .populate('recordedBy', 'name role')
-      .sort({ paymentDate: -1 });
+    const pageNum = Math.max(1, parseInt(page, 10) || 1);
+    const limitNum = Math.min(100, Math.max(1, parseInt(limit, 10) || 20));
+    const skip = (pageNum - 1) * limitNum;
+
+    const [total, payments] = await Promise.all([
+      Payment.countDocuments(filter),
+      Payment.find(filter)
+        .populate('customer', 'name email')
+        .populate('invoice', 'invoiceNumber totalAmount amountPaid amountDue status')
+        .populate('recordedBy', 'name role')
+        .sort({ paymentDate: -1 })
+        .skip(skip)
+        .limit(limitNum),
+    ]);
 
     return res.status(200).json({
       success: true,
       count: payments.length,
+      total,
+      page: pageNum,
+      totalPages: Math.ceil(total / limitNum),
+      limit: limitNum,
       payments,
     });
   } catch (error) {
